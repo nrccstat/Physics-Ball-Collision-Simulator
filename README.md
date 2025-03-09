@@ -1,8 +1,6 @@
 
 
----
 
-```markdown
 # Ball Collision Simulation
 
 This project is a 2D physics-based simulation built with Pygame, where balls move, collide with each other, and bounce off a circular boundary. Users can interactively customize ball properties such as radius, initial velocity, bounciness, and color through a graphical user interface (GUI) featuring sliders and buttons. The simulation demonstrates elastic collisions and boundary reflections in a vacuum-like environment (no gravity or friction).
@@ -173,6 +171,3 @@ Suggestions for enhancements:
 Enjoy experimenting with ball collisions and physics in this interactive simulation!
 ```
 
----
-
-This README provides a thorough guide to your Ball Collision Simulation, covering everything from setup to code details. It’s designed to be user-friendly and informative, ensuring that anyone can understand and use your project effectively. Let me know if you’d like to tweak anything!
