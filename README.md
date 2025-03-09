@@ -166,8 +166,5 @@ Suggestions for enhancements:
 
 
 
----
 
-Enjoy experimenting with ball collisions and physics in this interactive simulation!
-```
 
