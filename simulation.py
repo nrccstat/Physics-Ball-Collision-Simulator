@@ -2,12 +2,16 @@ import pygame
 import math
 import random
 import sys
+import numpy as np
+
+GRAVITY = 0.5  
+FRICTION = 0.995  
 
 pygame.init()
 
 WIDTH, HEIGHT = 800, 600
-CENTER = (WIDTH // 2, HEIGHT // 2)  
-RADIUS = 290  
+RADIUS = 220  
+CENTER = (WIDTH - RADIUS - 5, HEIGHT - RADIUS - 5)  
 FPS = 60  
 
 BLACK = (0, 0, 0)
@@ -67,7 +71,38 @@ class Ball:
         self.color = color
         self.e = float(e)
         self.m = r ** 2  
+        self.trail = []  
+        self.flash_timer = 0 
 
+    def update_trail(self):
+        self.trail.append((self.x, self.y))
+        if len(self.trail) > 15:
+            self.trail.pop(0)
+
+    def flash(self):
+        self.flash_timer = 5 
+
+    def draw(self, screen):
+       
+        for i, pos in enumerate(self.trail):
+            alpha = int(255 * (i + 1) / len(self.trail)) if self.trail else 0
+            trail_color = (*self.color, alpha)
+            s = pygame.Surface((self.r*2, self.r*2), pygame.SRCALPHA)
+            pygame.draw.circle(s, trail_color, (int(self.r), int(self.r)), int(self.r))
+            screen.blit(s, (pos[0] - self.r, pos[1] - self.r))
+        
+        if self.flash_timer > 0:
+            color = WHITE
+            self.flash_timer -= 1
+        else:
+            color = self.color
+        pygame.draw.circle(screen, color, (int(self.x), int(self.y)), int(self.r))
+        
+        speed = math.hypot(self.vx, self.vy)
+        if not math.isfinite(speed) or speed > 1e4:
+            speed = 0.0
+        label = font.render(f"{speed:.1f}", True, WHITE)
+        screen.blit(label, (int(self.x) - label.get_width() // 2, int(self.y) - int(self.r) - 15))
 
 def distance(p1, p2):
     return math.hypot(p1[0] - p2[0], p1[1] - p2[1])
@@ -87,7 +122,7 @@ def get_random_position(ball_radius):
 radius_slider = Slider(10, 10, 200, 10, 1, 25, 10)  
 vx_slider = Slider(10, 50, 200, 10, -30, 30, 0)     
 vy_slider = Slider(10, 90, 200, 10, -30, 30, 0)     
-e_slider = Slider(10, 130, 200, 10, 0.8, 1, 0.9)   
+e_slider = Slider(10, 130, 200, 10, 0.8, 1.01, 0.98)   
 
 color_buttons = [pygame.Rect(10, 170, 30, 30), pygame.Rect(50, 170, 30, 30), pygame.Rect(90, 170, 30, 30)]
 colors = [RED, GREEN, BLUE]
@@ -103,6 +138,22 @@ clock = pygame.time.Clock()
 running = True
 
 while running:
+    
+   
+    if balls:
+        positions = np.array([[ball.x, ball.y] for ball in balls])
+        velocities = np.array([[ball.vx, ball.vy] for ball in balls])
+        velocities[:, 1] += GRAVITY  
+        velocities *= FRICTION       
+        positions += velocities     
+        for i, ball in enumerate(balls):
+            ball.x, ball.y = positions[i]
+            ball.vx, ball.vy = velocities[i]
+        speeds = np.linalg.norm(velocities, axis=1)
+        avg_speed = np.mean(speeds)
+    else:
+        avg_speed = 0.0
+
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
@@ -133,9 +184,20 @@ while running:
                 slider.handle_event(event)
 
     for ball in balls:
-        ball.x += ball.vx
-        ball.y += ball.vy
-       
+        ball.update_trail()
+        dist_to_center = distance((ball.x, ball.y), CENTER)
+        if dist_to_center > RADIUS - ball.r:
+            n = normalize((ball.x - CENTER[0], ball.y - CENTER[1]))
+            ball.x = CENTER[0] + n[0] * (RADIUS - ball.r)
+            ball.y = CENTER[1] + n[1] * (RADIUS - ball.r)
+            v_dot_n = ball.vx * n[0] + ball.vy * n[1]
+            ball.vx -= (1 + ball.e) * v_dot_n * n[0]
+            ball.vy -= (1 + ball.e) * v_dot_n * n[1]
+        dist_to_center = distance((ball.x, ball.y), CENTER)
+        if dist_to_center > RADIUS - ball.r:
+            n = normalize((ball.x - CENTER[0], ball.y - CENTER[1]))
+            ball.x = CENTER[0] + n[0] * (RADIUS - ball.r)
+            ball.y = CENTER[1] + n[1] * (RADIUS - ball.r)
 
     for ball in balls:
         dist = distance((ball.x, ball.y), CENTER)
@@ -153,45 +215,70 @@ while running:
             dy = ball2.y - ball1.y
             dist = math.hypot(dx, dy)
             if dist <= ball1.r + ball2.r:
-                n = (dx / dist, dy / dist) if dist != 0 else (1, 0)
+                n = (dx / dist, dy / dist) if dist > 1e-8 else (1, 0) 
                 v_rel_x = ball2.vx - ball1.vx
                 v_rel_y = ball2.vy - ball1.vy
                 v_rel_n = v_rel_x * n[0] + v_rel_y * n[1]
                 if v_rel_n < 0:  
                     e = (ball1.e + ball2.e) / 2  
-                    J = (1 + e) * v_rel_n / (1 / ball1.m + 1 / ball2.m)
+                    denom = (1 / ball1.m + 1 / ball2.m)
+                    if denom < 1e-8:
+                        denom = 1e-8
+                    J = (1 + e) * v_rel_n / denom
                     ball1.vx += (J / ball1.m) * n[0]
                     ball1.vy += (J / ball1.m) * n[1]
                     ball2.vx -= (J / ball2.m) * n[0]
                     ball2.vy -= (J / ball2.m) * n[1]
+                    ball1.flash()
+                    ball2.flash()
 
     screen.fill(BLACK)
     pygame.draw.circle(screen, WHITE, CENTER, RADIUS, 1)  
-    for slider in [radius_slider, vx_slider, vy_slider, e_slider]:
-        slider.draw(screen)
+    panel_width = 370
+    panel_height = 260
+    panel_rect = pygame.Rect(0, 0, panel_width, panel_height)
+    pygame.draw.rect(screen, (30, 30, 30), panel_rect, border_radius=12)
+    pygame.draw.rect(screen, WHITE, panel_rect, 2, border_radius=12)
 
-    for i, button in enumerate(color_buttons):
-        pygame.draw.rect(screen, colors[i], button)
-        if i == selected_color_index:
-            pygame.draw.rect(screen, WHITE, button, 2)  
-
-    pygame.draw.rect(screen, WHITE, add_ball_button)
-    text = font.render("Add Ball", True, BLACK)
-    screen.blit(text, (20, 215))
-
-   
     labels = ["Radius:", "Vx:", "Vy:", "Bounciness:"]
     sliders = [radius_slider, vx_slider, vy_slider, e_slider]
-    for i, label in enumerate(labels):
+    for i, (label, slider) in enumerate(zip(labels, sliders)):
+        y = 25 + i * 50
+        slider.rect.y = y
+        slider.handle_rect.y = y - 10
+        slider.draw(screen)
         text = font.render(label, True, WHITE)
-        screen.blit(text, (220, 10 + i * 40))
-        value = sliders[i].get_value()
+        screen.blit(text, (slider.rect.right + 15, y - 2))
+        value = slider.get_value()
         value_text = font.render(f"{value:.2f}", True, WHITE)
-        screen.blit(value_text, (300, 10 + i * 40))
+        screen.blit(value_text, (slider.rect.right + 120, y - 2))
 
+    color_buttons_y = 25 + 4 * 50 - 5  
+    for i, button in enumerate(color_buttons):
+        button.y = color_buttons_y
+        button.x = 10 + i * 40
+        pygame.draw.rect(screen, colors[i], button, border_radius=6)
+        if i == selected_color_index:
+            pygame.draw.rect(screen, WHITE, button, 3, border_radius=6)
+        else:
+            pygame.draw.rect(screen, (80, 80, 80), button, 1, border_radius=6)
+
+    add_ball_button.x = 10
+    add_ball_button.y = color_buttons_y + 45
+    pygame.draw.rect(screen, WHITE, add_ball_button, border_radius=8)
+    text = font.render("Add Ball", True, BLACK)
+    text_rect = text.get_rect(center=add_ball_button.center)
+    screen.blit(text, text_rect)
+
+    stats_font = pygame.font.SysFont(None, 32, bold=True)
+    stats_text = stats_font.render(f"Balls: {len(balls)}", True, WHITE)
+    screen.blit(stats_text, (WIDTH - 160, 15))
+
+    avg_speed_text = font.render(f"Avg Speed: {avg_speed:.2f}", True, WHITE)
+    screen.blit(avg_speed_text, (WIDTH - 200, 50))
 
     for ball in balls:
-        pygame.draw.circle(screen, ball.color, (int(ball.x), int(ball.y)), int(ball.r))
+        ball.draw(screen)
 
     pygame.display.flip()
     clock.tick(FPS)
